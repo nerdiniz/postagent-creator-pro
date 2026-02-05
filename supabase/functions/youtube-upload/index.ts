@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
                     code,
                     client_id: GOOGLE_CLIENT_ID,
                     client_secret: GOOGLE_CLIENT_SECRET,
-                    redirect_uri: GOOGLE_REDIRECT_URI || 'http://localhost:3000',
+                    redirect_uri: GOOGLE_REDIRECT_URI,
                     grant_type: 'authorization_code',
                 }),
             })
