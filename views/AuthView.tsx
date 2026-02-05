@@ -3,12 +3,14 @@ import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { motion } from 'framer-motion';
 import { LogIn, UserPlus, Mail, Lock, Loader2, Sparkles } from 'lucide-react';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface AuthViewProps {
     onSuccess: () => void;
 }
 
 const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
+    const { showNotification } = useNotification();
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -27,7 +29,7 @@ const AuthView: React.FC<AuthViewProps> = ({ onSuccess }) => {
             } else {
                 const { error } = await supabase.auth.signUp({ email, password });
                 if (error) throw error;
-                alert('Verification email sent!');
+                showNotification('info', 'Check your email', 'Verification email sent!');
             }
             onSuccess();
         } catch (err: any) {

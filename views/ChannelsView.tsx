@@ -3,21 +3,14 @@ import {
   Plus,
   Trash2,
   ExternalLink,
-  RefreshCcw,
-  BarChart3,
   Zap,
-  Lock,
-  Key,
-  TrendingUp,
-  TrendingDown,
   Loader2,
-  X,
-  Save,
-  CheckCircle2
+  X
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { youtubeApi } from '../lib/youtube';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface ChannelRecord {
   id: string;
@@ -30,7 +23,12 @@ interface ChannelRecord {
   youtube_credentials?: any;
 }
 
-const ChannelsView: React.FC = () => {
+interface ChannelsViewProps {
+  onChannelUpdate?: () => void;
+}
+
+const ChannelsView: React.FC<ChannelsViewProps> = ({ onChannelUpdate }) => {
+  const { showNotification } = useNotification();
   const [channels, setChannels] = React.useState<ChannelRecord[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [showAddModal, setShowAddModal] = React.useState(false);
@@ -101,7 +99,7 @@ const ChannelsView: React.FC = () => {
       sessionStorage.removeItem('pending_channel_name');
     } catch (err: any) {
       logger.error('channel_oauth_failed', err);
-      alert('Failed to connect channel: ' + err.message);
+      showNotification('error', 'Connection Failed', err.message);
     } finally {
       setLoading(false);
     }
@@ -131,7 +129,7 @@ const ChannelsView: React.FC = () => {
       setChannels(prev => prev.filter(c => c.id !== id));
     } catch (err: any) {
       logger.error('channel_delete_failed', err);
-      alert('Failed to delete channel: ' + err.message);
+      showNotification('error', 'Delete Failed', err.message);
     }
   };
 
@@ -246,61 +244,6 @@ const ChannelsView: React.FC = () => {
           </table>
         </div>
 
-        <div className="mt-6">
-          <h2 className="text-slate-900 dark:text-white text-2xl font-black leading-tight tracking-tight">API Settings & Insights</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1">Monitor your daily quota and integration health.</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="flex flex-col gap-4 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 bg-white dark:bg-card-dark shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-slate-500 dark:text-slate-400 text-xs font-black uppercase tracking-widest">API Quota Used</p>
-              <div className="bg-primary/10 text-primary p-2 rounded-lg">
-                <BarChart3 size={18} />
-              </div>
-            </div>
-            <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-black leading-tight">4,200</p>
-            <div className="flex items-center gap-1">
-              <TrendingUp size={14} className="text-emerald-500" />
-              <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest">+12% from yesterday</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 bg-white dark:bg-card-dark shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-slate-500 dark:text-slate-400 text-xs font-black uppercase tracking-widest">Remaining Today</p>
-              <div className="bg-amber-500/10 text-amber-500 p-2 rounded-lg">
-                <Zap size={18} />
-              </div>
-            </div>
-            <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-black leading-tight">5,800</p>
-            <div className="flex items-center gap-1">
-              <TrendingDown size={14} className="text-amber-500" />
-              <p className="text-amber-500 text-[10px] font-black uppercase tracking-widest">-8% from limit</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 bg-white dark:bg-card-dark shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-slate-500 dark:text-slate-400 text-xs font-black uppercase tracking-widest">Daily Limit</p>
-              <div className="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg">
-                <Lock size={18} />
-              </div>
-            </div>
-            <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-black leading-tight">10,000</p>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Resets in 14 hours</p>
-          </div>
-        </div>
-
-        <div className="flex justify-center mt-2">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-8 py-3 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-surface-dark transition-all text-sm shadow-sm"
-          >
-            <Key size={18} />
-            Manage API Credentials
-          </button>
-        </div>
       </div>
 
       {/* Add Channel Modal */}

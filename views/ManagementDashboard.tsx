@@ -17,11 +17,15 @@ import { useNotification } from '../contexts/NotificationContext';
 
 interface ManagementDashboardProps {
   onViewChange: (view: any) => void;
+  activeChannel: Channel | null;
+  setActiveChannel: (channel: Channel) => void;
+  channels: Channel[];
 }
 
 const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange }) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [postedShortsCount, setPostedShortsCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -44,10 +48,17 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
       if (error) throw error;
 
       if (data && data.length > 0) {
-        setChannels(data);
+        // Map database fields to CamelCase
+        const mappedChannels: Channel[] = data.map(c => ({
+          ...c,
+          avatarUrl: c.avatar_url,
+          isActive: c.is_active
+        }));
+
+        setChannels(mappedChannels);
         // Default to first connected channel
-        const connected = data.find(c => c.status === 'Connected');
-        setSelectedChannel(connected || data[0]);
+        const connected = mappedChannels.find(c => c.status === 'Connected');
+        setSelectedChannel(connected || mappedChannels[0]);
       }
     } catch (error) {
       logger.error('Error fetching channels:', error);
@@ -59,10 +70,34 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
   const { showNotification } = useNotification();
 
   useEffect(() => {
-    if (selectedChannel && (!selectedChannel.statistics || Object.keys(selectedChannel.statistics).length === 0)) {
-      handleRefreshStats();
+    if (selectedChannel) {
+      if (!selectedChannel.statistics || Object.keys(selectedChannel.statistics).length === 0) {
+        handleRefreshStats();
+      }
+      fetchPostedShortsCount();
     }
-  }, [selectedChannel?.id]); // Only trigger when ID changes to avoid loops
+  }, [selectedChannel?.id]);
+
+  const fetchPostedShortsCount = async () => {
+    if (!selectedChannel) return;
+    try {
+      const { count, error } = await supabase
+        .from('shorts')
+        .select('*', { count: 'exact', head: true })
+        .eq('channel_id', selectedChannel.id)
+        .eq('status', 'scheduled');
+
+      const { count: postedCount } = await supabase
+        .from('shorts')
+        .select('*', { count: 'exact', head: true })
+        .eq('channel_id', selectedChannel.id)
+        .eq('status', 'posted');
+
+      setPostedShortsCount((count || 0) + (postedCount || 0));
+    } catch (err) {
+      console.error('Error counting shorts:', err);
+    }
+  };
 
   const handleRefreshStats = async () => {
     if (!selectedChannel) return;
@@ -71,38 +106,27 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
       const result = await youtubeApi.getChannelStats(selectedChannel.id);
 
       if (result.success) {
-        // Update local state
         const updatedChannel = {
           ...selectedChannel,
           statistics: result.statistics
         };
         setSelectedChannel(updatedChannel);
-        setChannels(prev => prev.map(c => c.id === updatedChannel.id ? updatedChannel : c));
         showNotification('success', 'Stats Updated', 'Statistics refreshed successfully');
       } else {
         throw new Error(result.error || 'Failed to refresh statistics');
       }
     } catch (error: any) {
       logger.error('stats_refresh_failed', error);
-
-      // Try to extract the actual message from the Edge Function response if available
-      let errorMessage = 'Edge Function returned a non-2xx status code';
-
-      if (error.context?.error?.message) {
-        errorMessage = error.context.error.message;
-      } else if (error.message && error.message !== 'Edge Function returned a non-2xx status code') {
-        errorMessage = error.message;
-      }
-
-      showNotification('error', 'Update Failed', errorMessage);
+      showNotification('error', 'Update Failed', error.message || 'Failed to refresh stats');
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const formatNumber = (num: string | undefined) => {
+  const formatNumber = (num: string | number | undefined) => {
     if (!num) return '0';
-    return new Intl.NumberFormat('en-US', { notation: "compact", compactDisplay: "short" }).format(parseInt(num));
+    const val = typeof num === 'string' ? parseInt(num) : num;
+    return new Intl.NumberFormat('en-US', { notation: "compact", compactDisplay: "short" }).format(val);
   };
 
   if (loading) {
@@ -131,7 +155,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
             >
               {selectedChannel ? (
                 <>
-                  <img src={selectedChannel.avatarUrl || ''} alt={selectedChannel.name} className="size-6 rounded-full object-cover" />
+                  <img src={selectedChannel.avatarUrl || ''} alt={selectedChannel.name} className="size-6 rounded-full object-cover border border-slate-100" />
                   <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{selectedChannel.name}</span>
                 </>
               ) : (
@@ -151,7 +175,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
                     }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left"
                   >
-                    <img src={channel.avatarUrl || ''} alt={channel.name} className="size-8 rounded-full object-cover" />
+                    <img src={channel.avatarUrl || ''} alt={channel.name} className="size-8 rounded-full object-cover border border-slate-100" />
                     <div>
                       <p className="text-sm font-bold text-slate-900 dark:text-white">{channel.name}</p>
                       <p className="text-xs text-slate-500 truncate">{channel.handle}</p>
@@ -187,7 +211,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
         ) : (
           <>
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {/* Subscribers */}
               <div className="bg-white dark:bg-card-dark p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
                 <div className="flex items-start justify-between">
@@ -221,6 +245,24 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
                 </div>
                 <div className="mt-4 flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-400">Lifetime video views</span>
+                </div>
+              </div>
+
+              {/* PostAgent Shorts */}
+              <div className="bg-white dark:bg-card-dark p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group border-l-4 border-l-primary">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-primary uppercase tracking-widest">Shorts Posted</p>
+                    <h3 className="text-3xl font-black text-slate-900 dark:text-white mt-2">
+                      {formatNumber(postedShortsCount)}
+                    </h3>
+                  </div>
+                  <div className="p-3 bg-primary/10 rounded-xl text-primary">
+                    <TrendingUp size={24} />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-400">Posted via PostAgent</span>
                 </div>
               </div>
 

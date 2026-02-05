@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { View } from './types';
+import { View, Channel } from './types';
 import Sidebar from './components/Sidebar';
 import ManagementDashboard from './views/ManagementDashboard';
 import ShortsDashboard from './views/ShortsDashboard';
@@ -11,15 +10,19 @@ import AuthView from './views/AuthView';
 import { supabase } from './lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { logger } from './lib/logger';
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('theme');
     return (saved as 'light' | 'dark') || 'light';
   });
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     // Update HTML class for Tailwind dark mode
@@ -45,10 +48,52 @@ const App: React.FC = () => {
     // Listen for changes on auth state (logged in, signed out, etc.)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (!session) {
+        setChannels([]);
+        setActiveChannel(null);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Global Channel Fetching
+  useEffect(() => {
+    if (user) {
+      fetchChannels();
+    }
+  }, [user?.id]);
+
+  const fetchChannels = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('channels')
+        .select('*')
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+
+      if (data) {
+        const mappedChannels: Channel[] = data.map(c => ({
+          ...c,
+          avatarUrl: c.avatar_url,
+          isActive: c.is_active
+        }));
+        setChannels(mappedChannels);
+
+        // Only set active if not already set or if previous active is gone
+        if (mappedChannels.length > 0) {
+          setActiveChannel(prev => {
+            if (prev && mappedChannels.find(c => c.id === prev.id)) return prev;
+            const connected = mappedChannels.find(c => c.status === 'Connected');
+            return connected || mappedChannels[0];
+          });
+        }
+      }
+    } catch (err) {
+      logger.error('Error fetching global channels:', err);
+    }
+  };
 
   if (loading) {
     return (
@@ -65,17 +110,47 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
-        return <ManagementDashboard onViewChange={setActiveView} />;
+        return (
+          <ManagementDashboard
+            onViewChange={setActiveView}
+            activeChannel={activeChannel}
+            setActiveChannel={setActiveChannel}
+            channels={channels}
+          />
+        );
       case 'shorts':
-        return <ShortsDashboard onViewChange={setActiveView} />;
+        return (
+          <ShortsDashboard
+            onViewChange={setActiveView}
+            activeChannel={activeChannel}
+          />
+        );
       case 'videos':
-        return <VideosDashboard onViewChange={setActiveView} />;
+        return (
+          <VideosDashboard
+            onViewChange={setActiveView}
+            activeChannel={activeChannel}
+          />
+        );
       case 'channels':
-        return <ChannelsView />;
+        return <ChannelsView onChannelUpdate={fetchChannels} />;
       case 'history':
-        return <HistoryView />;
+        return (
+          <HistoryView
+            activeChannel={activeChannel}
+            setActiveChannel={setActiveChannel}
+            channels={channels}
+          />
+        );
       default:
-        return <ManagementDashboard onViewChange={setActiveView} />;
+        return (
+          <ManagementDashboard
+            onViewChange={setActiveView}
+            activeChannel={activeChannel}
+            setActiveChannel={setActiveChannel}
+            channels={channels}
+          />
+        );
     }
   };
 
@@ -93,9 +168,11 @@ const App: React.FC = () => {
           user={user}
           theme={theme}
           onToggleTheme={toggleTheme}
+          isCollapsed={isSidebarCollapsed}
+          setIsCollapsed={setIsSidebarCollapsed}
         />
 
-        <main className="ml-64 flex-1 flex flex-col min-w-0 min-h-screen">
+        <main className={`${isSidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 flex flex-col min-w-0 min-h-screen transition-all duration-300 ease-in-out`}>
           {renderView()}
         </main>
 

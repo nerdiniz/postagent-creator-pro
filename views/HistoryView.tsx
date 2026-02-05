@@ -23,74 +23,107 @@ import {
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { youtubeApi } from '../lib/youtube';
+import { Channel } from '../types';
+import { useNotification } from '../contexts/NotificationContext';
 
-interface ShortRecord {
+interface HistoryItem {
   id: string;
   title: string;
   description: string;
-  status: 'scheduled' | 'posted' | 'removed' | 'error' | 'pending';
+  status: string;
   upload_date: string;
   scheduled_date: string | null;
   thumbnail_url: string | null;
-  file_size: string | null;
+  file_size?: string | null;
   duration: string | null;
   created_at: string;
   yt_video_id?: string;
   channel_id?: string;
+  item_type: 'short' | 'video';
 }
 
-const HistoryView: React.FC = () => {
-  const [history, setHistory] = useState<ShortRecord[]>([]);
+interface HistoryViewProps {
+  activeChannel: Channel | null;
+  setActiveChannel: (channel: Channel) => void;
+  channels: Channel[];
+}
+
+const HistoryView: React.FC<HistoryViewProps> = ({ activeChannel, setActiveChannel, channels }) => {
+  const { showNotification } = useNotification();
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // CRUD state
-  const [editingItem, setEditingItem] = useState<ShortRecord | null>(null);
+  const [editingItem, setEditingItem] = useState<HistoryItem | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Are you sure you want to delete ${selectedIds.length} videos? This action cannot be undone.`)) return;
+    if (!confirm(`Are you sure you want to delete ${selectedIds.length} items? This action cannot be undone.`)) return;
 
-    // Create a temporary deleting state for UI feedback
-    // We reuse isDeleting but cast it to any to bypass string type constraint if needed, 
-    // or better, we create a isBulkDeleting state. 
-    // For simplicity, let's just use generic loading or iterate.
-    const videosToDelete = history.filter(h => selectedIds.includes(h.id));
+    const itemsToDelete = history.filter(h => selectedIds.includes(h.id));
 
-    for (const video of videosToDelete) {
-      setIsDeleting(video.id); // Show spinner on current item
+    for (const item of itemsToDelete) {
+      setIsDeleting(item.id);
       try {
-        if (video.yt_video_id && video.channel_id) {
+        if (item.yt_video_id && item.channel_id) {
           try {
-            await youtubeApi.deleteVideo(video.yt_video_id, video.channel_id);
+            await youtubeApi.deleteVideo(item.yt_video_id, item.channel_id);
           } catch (e) {
-            console.error(`Failed to delete YT video ${video.id}`, e);
+            console.error(`Failed to delete YT video ${item.id}`, e);
           }
         }
-        await supabase.from('shorts').delete().eq('id', video.id);
+        const table = item.item_type === 'short' ? 'shorts' : 'videos';
+        await supabase.from(table).delete().eq('id', item.id);
       } catch (e) {
-        console.error(`Failed to delete video ${video.id}`, e);
+        console.error(`Failed to delete item ${item.id}`, e);
       }
     }
     setIsDeleting(null);
     setSelectedIds([]);
-    fetchHistory(); // Refresh list
+    fetchHistory();
   };
 
   const fetchHistory = async () => {
+    if (!activeChannel) {
+      setHistory([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
-        .from('shorts')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Fetch from both tables
+      const [shortsRes, videosRes] = await Promise.all([
+        supabase
+          .from('shorts')
+          .select('*')
+          .or(`channel_id.eq.${activeChannel.id},channel_id.is.null`)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('videos')
+          .select('*')
+          .or(`channel_id.eq.${activeChannel.id},channel_id.is.null`)
+          .order('created_at', { ascending: false })
+      ]);
 
-      if (error) throw error;
-      setHistory(data || []);
+      if (shortsRes.error) throw shortsRes.error;
+      if (videosRes.error) throw videosRes.error;
+
+      const merged: HistoryItem[] = [
+        ...(shortsRes.data || []).map(s => ({ ...s, item_type: 'short' as const })),
+        ...(videosRes.data || []).map(v => ({ ...v, item_type: 'video' as const, title: v.name, description: v.description || '' }))
+      ];
+
+      // Sort by created_at descending
+      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setHistory(merged);
     } catch (err: any) {
       console.error('Error fetching history:', err);
       setError(err.message);
@@ -101,58 +134,69 @@ const HistoryView: React.FC = () => {
 
   useEffect(() => {
     fetchHistory();
-  }, []);
+  }, [activeChannel?.id]);
 
-  const handleUpdate = async (id: string, updates: Partial<ShortRecord>) => {
+  const handleUpdate = async (id: string, updates: Partial<HistoryItem>) => {
     setIsUpdating(true);
+    const item = history.find(h => h.id === id);
+    if (!item) return;
+
     try {
+      const table = item.item_type === 'short' ? 'shorts' : 'videos';
+      // Map title back to name for videos if needed
+      const dbUpdates = { ...updates };
+      if (item.item_type === 'video' && updates.title) {
+        (dbUpdates as any).name = updates.title;
+      }
+
       const { error } = await supabase
-        .from('shorts')
-        .update(updates)
+        .from(table)
+        .update(dbUpdates)
         .eq('id', id);
 
       if (error) throw error;
 
-      logger.log('shorts_record_updated', { id, updates });
-      setHistory(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
+      logger.log(`${item.item_type}_record_updated`, { id, updates });
+      setHistory(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
       setEditingItem(null);
+      showNotification('success', 'Update Successful', 'Record has been updated.');
     } catch (err: any) {
-      logger.error('shorts_update_failed', err);
-      alert('Failed to update record: ' + err.message);
+      logger.error('history_update_failed', err);
+      showNotification('error', 'Update Failed', err.message);
     } finally {
       setIsUpdating(false);
     }
   };
 
-  const handleDelete = async (record: ShortRecord) => {
-    if (!confirm('Are you sure you want to delete this video? It will be removed from YouTube if synced.')) return;
+  const handleDelete = async (item: HistoryItem) => {
+    if (!confirm(`Are you sure you want to delete this ${item.item_type}? It will be removed from YouTube if synced.`)) return;
 
-    setIsDeleting(record.id);
+    setIsDeleting(item.id);
     try {
-      // 1. Delete from YouTube if we have the ID and Channel
-      if (record.yt_video_id && record.channel_id) {
+      if (item.yt_video_id && item.channel_id) {
         try {
-          await youtubeApi.deleteVideo(record.yt_video_id, record.channel_id);
-          logger.log('youtube_video_deleted', { ytId: record.yt_video_id });
+          await youtubeApi.deleteVideo(item.yt_video_id, item.channel_id);
+          logger.log('youtube_video_deleted', { ytId: item.yt_video_id });
         } catch (ytError: any) {
           console.error('YouTube deletion failed:', ytError);
-          alert('Warning: Could not delete from YouTube: ' + ytError.message + '. Deleting from database only.');
+          showNotification('warning', 'YouTube Sync Issue', `Could not delete from YouTube: ${ytError.message}. Deleting from database only.`);
         }
       }
 
-      // 2. Delete from Supabase
+      const table = item.item_type === 'short' ? 'shorts' : 'videos';
       const { error } = await supabase
-        .from('shorts')
+        .from(table)
         .delete()
-        .eq('id', record.id);
+        .eq('id', item.id);
 
       if (error) throw error;
 
-      logger.log('shorts_record_deleted', { id: record.id });
-      setHistory(prev => prev.filter(item => item.id !== record.id));
+      logger.log(`${item.item_type}_record_deleted`, { id: item.id });
+      setHistory(prev => prev.filter(i => i.id !== item.id));
+      showNotification('success', 'Delete Successful', 'Record has been removed.');
     } catch (err: any) {
-      logger.error('shorts_delete_failed', err);
-      alert('Failed to delete record: ' + err.message);
+      logger.error('history_delete_failed', err);
+      showNotification('error', 'Delete Failed', err.message);
     } finally {
       setIsDeleting(null);
     }
@@ -190,19 +234,59 @@ const HistoryView: React.FC = () => {
             <h2 className="text-slate-900 dark:text-white text-3xl font-black tracking-tight">Upload History</h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Track and manage your automated YouTube video schedules.</p>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={fetchHistory}
-              disabled={loading}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm disabled:opacity-50"
-            >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-              Refresh
-            </button>
-            <button className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm">
-              <Download size={18} />
-              Export History
-            </button>
+
+          <div className="flex items-center gap-4">
+            {/* Channel Selector */}
+            {channels.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="flex items-center gap-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  {activeChannel ? (
+                    <>
+                      <img src={activeChannel.avatarUrl || ''} alt={activeChannel.name} className="size-6 rounded-full object-cover border border-slate-200" />
+                      <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{activeChannel.name}</span>
+                    </>
+                  ) : (
+                    <span className="text-sm font-bold text-slate-500">Select Channel</span>
+                  )}
+                  <ChevronDown size={16} className="text-slate-400" />
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden">
+                    {channels.map(channel => (
+                      <button
+                        key={channel.id}
+                        onClick={() => {
+                          setActiveChannel(channel);
+                          setIsDropdownOpen(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left"
+                      >
+                        <img src={channel.avatarUrl || ''} alt={channel.name} className="size-8 rounded-full object-cover border border-slate-100" />
+                        <div>
+                          <p className="text-sm font-bold text-slate-900 dark:text-white">{channel.name}</p>
+                          <p className="text-xs text-slate-500 truncate">{channel.handle}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={fetchHistory}
+                disabled={loading}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm disabled:opacity-50"
+              >
+                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
 
@@ -334,9 +418,17 @@ const HistoryView: React.FC = () => {
                         </div>
                         <div className="flex flex-col gap-0.5 min-w-0">
                           <span className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[300px]">{item.title}</span>
-                          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest flex items-center gap-1">
-                            Uploaded {new Date(item.upload_date).toLocaleDateString()}
-                          </span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border ${item.item_type === 'short'
+                                ? 'bg-primary/5 text-primary border-primary/20'
+                                : 'bg-blue-500/5 text-blue-500 border-blue-500/20'
+                              }`}>
+                              {item.item_type}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
+                              Uploaded {new Date(item.upload_date).toLocaleDateString()}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -412,7 +504,7 @@ const HistoryView: React.FC = () => {
                 <div className="bg-primary/10 text-primary p-2 rounded-xl">
                   <Edit2 size={20} />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Edit Scheduled Short</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Edit {editingItem.item_type === 'short' ? 'Short' : 'Video'}</h3>
               </div>
               <button onClick={() => setEditingItem(null)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                 <X size={20} />

@@ -15,10 +15,11 @@ import {
   CalendarDays,
   Clock4
 } from 'lucide-react';
-import { VideoFile } from '../types';
+import { VideoFile, Channel } from '../types';
 import { supabase } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { youtubeApi } from '../lib/youtube';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface LocalVideoFile extends VideoFile {
   file?: File;
@@ -28,37 +29,22 @@ interface LocalVideoFile extends VideoFile {
 
 interface ShortsDashboardProps {
   onViewChange: (view: any) => void;
+  activeChannel: Channel | null;
 }
 
-const ShortsDashboard: React.FC<ShortsDashboardProps> = ({ onViewChange }) => {
+const ShortsDashboard: React.FC<ShortsDashboardProps> = ({ onViewChange, activeChannel }) => {
+  const { showNotification } = useNotification();
   const [videos, setVideos] = useState<LocalVideoFile[]>([]);
   const [globalDescription, setGlobalDescription] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
-  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
-  const [activeChannelName, setActiveChannelName] = useState<string | null>(null);
+  const activeChannelId = activeChannel?.id || null;
+  const activeChannelName = activeChannel?.name || null;
 
   const [schedulingMode, setSchedulingMode] = useState<'individual' | 'interval'>('interval');
   const [intervalHours, setIntervalHours] = useState<3 | 6 | 12 | 24>(3);
-
-  // Fetch active channel on mount
-  useEffect(() => {
-    const fetchActiveChannel = async () => {
-      const { data, error } = await supabase
-        .from('channels')
-        .select('id, name')
-        .eq('is_active', true)
-        .single();
-
-      if (!error && data) {
-        setActiveChannelId(data.id);
-        setActiveChannelName(data.name);
-      }
-    };
-    fetchActiveChannel();
-  }, []);
 
   const handleFileUpload = (files: FileList | null) => {
     if (!files) return;
@@ -167,8 +153,10 @@ const ShortsDashboard: React.FC<ShortsDashboardProps> = ({ onViewChange }) => {
             description: globalDescription,
             privacyStatus: 'private',
             videoFile: video.file!,
-            channelId: activeChannelId,
-            scheduledAt: record.scheduled_date
+            channelId: activeChannelId!,
+            scheduledAt: record.scheduled_date,
+            type: 'short',
+            recordId: record.id
           });
 
           if (result && result.success) {
@@ -194,7 +182,7 @@ const ShortsDashboard: React.FC<ShortsDashboardProps> = ({ onViewChange }) => {
       }
 
       logger.log('shorts_publish_batch_complete', { count: videos.length });
-      alert(`Batch processing complete! Check History view for status.`);
+      showNotification('success', 'Batch processing complete', 'Check History view for status.');
       setVideos([]);
       setGlobalDescription('');
     } catch (err: any) {
