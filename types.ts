@@ -1,5 +1,5 @@
 
-export type View = 'upload' | 'shorts' | 'channels' | 'history';
+export type View = 'dashboard' | 'shorts' | 'videos' | 'channels' | 'history';
 
 export interface VideoFile {
   id: string;
@@ -19,6 +19,12 @@ export interface Channel {
   avatarUrl: string;
   status: 'Connected' | 'Disconnected';
   isActive: boolean;
+  statistics?: {
+    viewCount: string;
+    subscriberCount: string;
+    hiddenSubscriberCount: boolean;
+    videoCount: string;
+  };
 }
 
 export interface HistoryItem {
