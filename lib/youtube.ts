@@ -17,7 +17,7 @@ export const youtubeApi = {
             client_id: GOOGLE_CLIENT_ID,
             redirect_uri: window.location.origin,
             response_type: 'code',
-            scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
+            scope: 'https://www.googleapis.com/auth/youtube',
             access_type: 'offline',
             prompt: 'consent',
         });
