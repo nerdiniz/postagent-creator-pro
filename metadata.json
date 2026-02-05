@@ -1,0 +1,9 @@
+
+{
+  "name": "PostAgent Creator Pro",
+  "description": "A high-performance bulk video upload and scheduling dashboard for YouTube and Shorts creators.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
