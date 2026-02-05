@@ -71,7 +71,7 @@ const ChannelsView: React.FC<ChannelsViewProps> = ({ onChannelUpdate }) => {
 
     try {
       const pendingName = sessionStorage.getItem('pending_channel_name') || 'YouTube Channel';
-      const tokens = await youtubeApi.exchangeCode(code);
+      const tokens = await youtubeApi.exchangeCode(code, window.location.origin);
       const details = tokens.channelDetails || {};
 
       const { data, error } = await supabase

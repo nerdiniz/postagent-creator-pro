@@ -109,10 +109,6 @@ const App: React.FC = () => {
     );
   }
 
-  if (!user) {
-    return <AuthView onSuccess={() => { }} />;
-  }
-
   const renderView = () => {
     switch (activeView) {
       case 'dashboard':
@@ -166,45 +162,49 @@ const App: React.FC = () => {
 
   return (
     <NotificationProvider>
-      <div className="flex min-h-screen bg-white dark:bg-background-dark transition-colors duration-300">
-        <Sidebar
-          activeView={activeView}
-          onViewChange={setActiveView}
-          onLogout={handleLogout}
-          user={user}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          isCollapsed={isSidebarCollapsed}
-          setIsCollapsed={setIsSidebarCollapsed}
-          isMobileOpen={isMobileMenuOpen}
-          setIsMobileOpen={setIsMobileMenuOpen}
-        />
+      {!user ? (
+        <AuthView onSuccess={() => { }} />
+      ) : (
+        <div className="flex min-h-screen bg-white dark:bg-background-dark transition-colors duration-300">
+          <Sidebar
+            activeView={activeView}
+            onViewChange={setActiveView}
+            onLogout={handleLogout}
+            user={user}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            isCollapsed={isSidebarCollapsed}
+            setIsCollapsed={setIsSidebarCollapsed}
+            isMobileOpen={isMobileMenuOpen}
+            setIsMobileOpen={setIsMobileMenuOpen}
+          />
 
-        {/* Mobile Header */}
-        <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-card-dark border-b border-slate-200 dark:border-border-dark flex items-center justify-between px-4 z-20">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary size-8 rounded-lg flex items-center justify-center text-white shadow-lg shadow-primary/20 shrink-0">
-              <Zap size={18} fill="white" />
+          {/* Mobile Header */}
+          <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-card-dark border-b border-slate-200 dark:border-border-dark flex items-center justify-between px-4 z-20">
+            <div className="flex items-center gap-3">
+              <div className="bg-primary size-8 rounded-lg flex items-center justify-center text-white shadow-lg shadow-primary/20 shrink-0">
+                <Zap size={18} fill="white" />
+              </div>
+              <h1 className="text-base font-bold leading-none tracking-tight text-slate-900 dark:text-white">PostAgent</h1>
             </div>
-            <h1 className="text-base font-bold leading-none tracking-tight text-slate-900 dark:text-white">PostAgent</h1>
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-surface-dark rounded-lg transition-colors"
+            >
+              <Menu size={24} />
+            </button>
           </div>
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-surface-dark rounded-lg transition-colors"
-          >
-            <Menu size={24} />
+
+          <main className={`${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} ml-0 flex-1 flex flex-col min-w-0 min-h-screen transition-all duration-300 ease-in-out pt-16 lg:pt-0`}>
+            {renderView()}
+          </main>
+
+          {/* Floating Action Button for Mobile / Quick Upload */}
+          <button className="fixed bottom-6 right-6 size-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center lg:hidden hover:scale-110 active:scale-95 transition-all z-50">
+            <span className="material-symbols-outlined text-3xl">add</span>
           </button>
         </div>
-
-        <main className={`${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} ml-0 flex-1 flex flex-col min-w-0 min-h-screen transition-all duration-300 ease-in-out pt-16 lg:pt-0`}>
-          {renderView()}
-        </main>
-
-        {/* Floating Action Button for Mobile / Quick Upload */}
-        <button className="fixed bottom-6 right-6 size-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center lg:hidden hover:scale-110 active:scale-95 transition-all z-50">
-          <span className="material-symbols-outlined text-3xl">add</span>
-        </button>
-      </div>
+      )}
     </NotificationProvider>
   );
 };

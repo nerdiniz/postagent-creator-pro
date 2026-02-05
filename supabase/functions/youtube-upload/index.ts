@@ -65,10 +65,11 @@ Deno.serve(async (req) => {
 
         // --- Action: Exchange Authorization Code for Tokens ---
         if (action === 'exchange-code') {
-            const { code } = bodyData
+            const { code, redirectUri } = bodyData
             if (!code) throw new Error('Authorization code missing in request')
 
             console.log('Exchanging code for tokens...')
+            const finalRedirectUri = redirectUri || GOOGLE_REDIRECT_URI
 
             const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
                 method: 'POST',
@@ -77,7 +78,7 @@ Deno.serve(async (req) => {
                     code,
                     client_id: GOOGLE_CLIENT_ID,
                     client_secret: GOOGLE_CLIENT_SECRET,
-                    redirect_uri: GOOGLE_REDIRECT_URI,
+                    redirect_uri: finalRedirectUri,
                     grant_type: 'authorization_code',
                 }),
             })

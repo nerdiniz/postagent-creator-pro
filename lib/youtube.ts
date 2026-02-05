@@ -24,12 +24,12 @@ export const youtubeApi = {
         return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     },
 
-    async exchangeCode(code: string) {
+    async exchangeCode(code: string, redirectUri: string) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
         const { data, error } = await supabase.functions.invoke('youtube-upload', {
-            body: { action: 'exchange-code', code },
+            body: { action: 'exchange-code', code, redirectUri },
             headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         if (error) throw error;
