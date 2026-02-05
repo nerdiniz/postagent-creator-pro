@@ -12,6 +12,8 @@ import { User } from '@supabase/supabase-js';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { logger } from './lib/logger';
 
+import { Menu, Zap } from 'lucide-react';
+
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [user, setUser] = useState<User | null>(null);
@@ -23,6 +25,7 @@ const App: React.FC = () => {
     return (saved as 'light' | 'dark') || 'light';
   });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     // Update HTML class for Tailwind dark mode
@@ -82,12 +85,15 @@ const App: React.FC = () => {
         setChannels(mappedChannels);
 
         // Only set active if not already set or if previous active is gone
-        if (mappedChannels.length > 0) {
-          setActiveChannel(prev => {
-            if (prev && mappedChannels.find(c => c.id === prev.id)) return prev;
-            const connected = mappedChannels.find(c => c.status === 'Connected');
-            return connected || mappedChannels[0];
-          });
+        // Always prioritize the one marked as isActive from DB
+        const dbActive = mappedChannels.find(c => c.isActive);
+
+        if (dbActive) {
+          setActiveChannel(dbActive);
+        } else {
+          // Fallback: connected first, then any
+          const connected = mappedChannels.find(c => c.status === 'Connected');
+          setActiveChannel(connected || mappedChannels[0]);
         }
       }
     } catch (err) {
@@ -170,9 +176,27 @@ const App: React.FC = () => {
           onToggleTheme={toggleTheme}
           isCollapsed={isSidebarCollapsed}
           setIsCollapsed={setIsSidebarCollapsed}
+          isMobileOpen={isMobileMenuOpen}
+          setIsMobileOpen={setIsMobileMenuOpen}
         />
 
-        <main className={`${isSidebarCollapsed ? 'ml-20' : 'ml-64'} flex-1 flex flex-col min-w-0 min-h-screen transition-all duration-300 ease-in-out`}>
+        {/* Mobile Header */}
+        <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white dark:bg-card-dark border-b border-slate-200 dark:border-border-dark flex items-center justify-between px-4 z-20">
+          <div className="flex items-center gap-3">
+            <div className="bg-primary size-8 rounded-lg flex items-center justify-center text-white shadow-lg shadow-primary/20 shrink-0">
+              <Zap size={18} fill="white" />
+            </div>
+            <h1 className="text-base font-bold leading-none tracking-tight text-slate-900 dark:text-white">PostAgent</h1>
+          </div>
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-surface-dark rounded-lg transition-colors"
+          >
+            <Menu size={24} />
+          </button>
+        </div>
+
+        <main className={`${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} ml-0 flex-1 flex flex-col min-w-0 min-h-screen transition-all duration-300 ease-in-out pt-16 lg:pt-0`}>
           {renderView()}
         </main>
 

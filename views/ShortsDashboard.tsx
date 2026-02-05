@@ -129,7 +129,8 @@ const ShortsDashboard: React.FC<ShortsDashboardProps> = ({ onViewChange, activeC
           file_size: v.size,
           duration: v.duration,
           thumbnail_url: v.thumbnailUrl,
-          user_id: user.id
+          user_id: user.id,
+          channel_id: activeChannelId
         };
       });
 

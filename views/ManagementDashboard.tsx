@@ -22,75 +22,41 @@ interface ManagementDashboardProps {
   channels: Channel[];
 }
 
-const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange }) => {
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange, activeChannel, setActiveChannel, channels }) => {
+  // const [channels, setChannels] = useState<Channel[]>([]); // Removed: Using props
+  // const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null); // Removed: Using props
   const [postedShortsCount, setPostedShortsCount] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Changed to false initially as data comes from props
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  useEffect(() => {
-    fetchChannels();
-  }, []);
+  // Removed fetchChannels() as we rely on App.tsx to pass channels
 
-  const fetchChannels = async () => {
-    try {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('channels')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        // Map database fields to CamelCase
-        const mappedChannels: Channel[] = data.map(c => ({
-          ...c,
-          avatarUrl: c.avatar_url,
-          isActive: c.is_active
-        }));
-
-        setChannels(mappedChannels);
-        // Default to first connected channel
-        const connected = mappedChannels.find(c => c.status === 'Connected');
-        setSelectedChannel(connected || mappedChannels[0]);
-      }
-    } catch (error) {
-      logger.error('Error fetching channels:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const { showNotification } = useNotification();
 
   useEffect(() => {
-    if (selectedChannel) {
-      if (!selectedChannel.statistics || Object.keys(selectedChannel.statistics).length === 0) {
+    if (activeChannel) {
+      if (!activeChannel.statistics || Object.keys(activeChannel.statistics).length === 0) {
         handleRefreshStats();
       }
       fetchPostedShortsCount();
     }
-  }, [selectedChannel?.id]);
+  }, [activeChannel?.id]);
 
   const fetchPostedShortsCount = async () => {
-    if (!selectedChannel) return;
+    if (!activeChannel) return;
     try {
       const { count, error } = await supabase
         .from('shorts')
         .select('*', { count: 'exact', head: true })
-        .eq('channel_id', selectedChannel.id)
+        .eq('channel_id', activeChannel.id)
         .eq('status', 'scheduled');
 
       const { count: postedCount } = await supabase
         .from('shorts')
         .select('*', { count: 'exact', head: true })
-        .eq('channel_id', selectedChannel.id)
+        .eq('channel_id', activeChannel.id)
         .eq('status', 'posted');
 
       setPostedShortsCount((count || 0) + (postedCount || 0));
@@ -100,17 +66,23 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
   };
 
   const handleRefreshStats = async () => {
-    if (!selectedChannel) return;
+    if (!activeChannel) return;
     try {
       setIsRefreshing(true);
-      const result = await youtubeApi.getChannelStats(selectedChannel.id);
+      const result = await youtubeApi.getChannelStats(activeChannel.id);
 
       if (result.success) {
+        // Optimistically update the active channel in the parent if needed, 
+        // but typically stats should be updated in the DB and then synced.
+        // For now, we'll just notify success. Integrating strict sync might require App.tsx update.
+
+        // Use the passed setter to update global state with new stats
         const updatedChannel = {
-          ...selectedChannel,
+          ...activeChannel,
           statistics: result.statistics
         };
-        setSelectedChannel(updatedChannel);
+        setActiveChannel(updatedChannel);
+
         showNotification('success', 'Stats Updated', 'Statistics refreshed successfully');
       } else {
         throw new Error(result.error || 'Failed to refresh statistics');
@@ -153,10 +125,10 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               className="flex items-center gap-3 bg-white dark:bg-card-dark border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors pointer-events-auto"
             >
-              {selectedChannel ? (
+              {activeChannel ? (
                 <>
-                  <img src={selectedChannel.avatarUrl || ''} alt={selectedChannel.name} className="size-6 rounded-full object-cover border border-slate-100" />
-                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{selectedChannel.name}</span>
+                  <img src={activeChannel.avatarUrl || ''} alt={activeChannel.name} className="size-6 rounded-full object-cover border border-slate-100" />
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{activeChannel.name}</span>
                 </>
               ) : (
                 <span className="text-sm font-bold text-slate-500">Select Channel</span>
@@ -170,7 +142,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
                   <button
                     key={channel.id}
                     onClick={() => {
-                      setSelectedChannel(channel);
+                      setActiveChannel(channel);
                       setIsDropdownOpen(false);
                     }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left"
@@ -197,7 +169,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
       </header>
 
       <div className="p-8 max-w-[1400px] w-full mx-auto space-y-8">
-        {!selectedChannel ? (
+        {!activeChannel ? (
           <div className="text-center py-20">
             <div className="bg-slate-100 dark:bg-slate-800 size-20 rounded-full flex items-center justify-center mx-auto mb-6">
               <LayoutDashboard size={32} className="text-slate-400" />
@@ -218,7 +190,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
                   <div>
                     <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Subscribers</p>
                     <h3 className="text-3xl font-black text-slate-900 dark:text-white mt-2">
-                      {formatNumber(selectedChannel.statistics?.subscriberCount)}
+                      {formatNumber(activeChannel.statistics?.subscriberCount)}
                     </h3>
                   </div>
                   <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded-xl text-blue-600 dark:text-blue-400">
@@ -236,7 +208,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
                   <div>
                     <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Total Views</p>
                     <h3 className="text-3xl font-black text-slate-900 dark:text-white mt-2">
-                      {formatNumber(selectedChannel.statistics?.viewCount)}
+                      {formatNumber(activeChannel.statistics?.viewCount)}
                     </h3>
                   </div>
                   <div className="p-3 bg-green-50 dark:bg-green-500/10 rounded-xl text-green-600 dark:text-green-400">
@@ -272,7 +244,7 @@ const ManagementDashboard: React.FC<ManagementDashboardProps> = ({ onViewChange 
                   <div>
                     <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Total Videos</p>
                     <h3 className="text-3xl font-black text-slate-900 dark:text-white mt-2">
-                      {formatNumber(selectedChannel.statistics?.videoCount)}
+                      {formatNumber(activeChannel.statistics?.videoCount)}
                     </h3>
                   </div>
                   <div className="p-3 bg-purple-50 dark:bg-purple-500/10 rounded-xl text-purple-600 dark:text-purple-400">
