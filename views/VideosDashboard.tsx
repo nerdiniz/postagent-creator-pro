@@ -46,6 +46,7 @@ const VideosDashboard: React.FC<VideosDashboardProps> = ({ onViewChange, activeC
 
     const activeChannelId = activeChannel?.id || null;
     const activeChannelName = activeChannel?.name || null;
+    const [batchStartDate, setBatchStartDate] = useState<string>(new Date().toISOString().slice(0, 16));
 
     const [schedulingMode, setSchedulingMode] = useState<'individual' | 'interval'>('interval');
     const [intervalHours, setIntervalHours] = useState<3 | 6 | 12 | 24>(24); // Default 24h for long videos
@@ -121,8 +122,9 @@ const VideosDashboard: React.FC<VideosDashboardProps> = ({ onViewChange, activeC
                 let scheduledDate: string;
 
                 if (schedulingMode === 'interval') {
-                    const delayInMs = (index + 1) * intervalHours * 60 * 60 * 1000;
-                    scheduledDate = new Date(Date.now() + delayInMs).toISOString();
+                    const baseDate = batchStartDate ? new Date(batchStartDate).getTime() : Date.now();
+                    const delayInMs = (index) * intervalHours * 60 * 60 * 1000;
+                    scheduledDate = new Date(baseDate + delayInMs).toISOString();
                 } else {
                     scheduledDate = v.scheduledDate ? new Date(v.scheduledDate).toISOString() : new Date().toISOString();
                 }
@@ -524,7 +526,24 @@ const VideosDashboard: React.FC<VideosDashboardProps> = ({ onViewChange, activeC
                                                 ))}
                                             </div>
                                             <p className="text-[10px] text-slate-500 font-medium italic">
-                                                Videos spread by {intervalHours}h each, starting from now.
+                                                Videos spread by {intervalHours}h each, starting from the chose date.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {schedulingMode === 'interval' && (
+                                        <div className="flex flex-col gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                            <p className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                                <CalendarDays size={16} /> Batch Start Date
+                                            </p>
+                                            <input
+                                                type="datetime-local"
+                                                value={batchStartDate}
+                                                onChange={(e) => setBatchStartDate(e.target.value)}
+                                                className="w-full bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                            />
+                                            <p className="text-[10px] text-slate-500 font-medium italic">
+                                                The first video in the queue will be scheduled for this time.
                                             </p>
                                         </div>
                                     )}
